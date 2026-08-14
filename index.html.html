@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>リアルタイムアンケート＆流れるコメントアプリ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background-color: #f0f2f5;
+      color: #333;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* --- ナビゲーションバー（ロール切り替え） --- */
+    #role-selector {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 48px;
+      background: #1e293b;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 10000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .role-brand {
+      font-weight: 700;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .event-title-badge {
+      background: #334155;
+      color: #38bdf8;
+      border: 1px solid #0284c7;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .role-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .role-btn {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: transparent;
+      color: #cbd5e1;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s ease;
+    }
+
+    .role-btn.active {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+      font-weight: 600;
+    }
+
+    .view-container {
+      margin-top: 48px;
+      height: calc(100vh - 48px);
+      position: relative;
+    }
+
+    /* ==========================================
+       1. 使用者画面 (User View)
+       ========================================== */
+    #user-view {
+      display: block;
+      height: 100%;
+      position: relative;
+      background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+    }
+
+    /* 流れるコメントスクリーンの領域 (前面に表示するため z-index: 600) */
+    #comment-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: calc(100% - 80px);
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 600;
+    }
+
+    .marquee-comment {
+      position: absolute;
+      white-space: nowrap;
+      font-size: 32px;
+      font-weight: 700;
+      color: #1e1b4b;
+      text-shadow: 2px 2px 0px #ffffff, -2px -2px 0px #ffffff, 2px -2px 0px #ffffff, -2px 2px 0px #ffffff;
+      animation: flyRightToLeft 9s linear forwards;
+    }
+
+    @keyframes flyRightToLeft {
+      from { transform: translateX(100vw); }
+      to { transform: translateX(-100%); }
+    }
+
+    /* アンケートポップアップ (z-index: 500) */
+    #survey-modal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.9);
+      width: 90%;
+      max-width: 520px;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      padding: 28px;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      z-index: 500;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #survey-modal.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .survey-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .survey-badge {
+      background: #3b82f6;
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    .survey-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .survey-options-group {
+      margin: 18px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .option-label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 15px;
+    }
+
+    .option-label:hover {
+      background: #eff6ff;
+      border-color: #3b82f6;
+    }
+
+    .option-label input {
+      accent-color: #3b82f6;
+      width: 18px;
+      height: 18px;
+    }
+
+    .text-answer-input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 90px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .submit-btn:hover {
+      background: #1d4ed8;
+    }
+
+    /* 使用者側下部入力エリア */
+    #user-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 80px;
+      background: white;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      z-index: 100;
+    }
+
+    .comment-input-container {
+      display: flex;
+      width: 100%;
+      max-width: 700px;
+      gap: 10px;
+    }
+
+    .comment-input-container input {
+      flex: 1;
+      padding: 14px 18px;
+      border: 2px solid #cbd5e1;
+      border-radius: 30px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .comment-input-container input:focus {
+      border-color: #3b82f6;
+    }
+
+    .send-btn {
+      padding: 0 24px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 30px;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+
+    .send-btn:hover {
+      background: #2563eb;
+    }
+
+    /* ==========================================
+       2. 管理者画面 (Admin View)
+       ========================================== */
+    #admin-view {
+      display: none;
+      height: 100%;
+      overflow-y: auto;
+      background: #f8fafc;
+    }
+
+    /* ログインモーダル */
+    #admin-login-overlay {
+      position: fixed;
+      top: 48px;
+      left: 0;
+      width: 100%;
+      height: calc(100% - 48px);
+      background: rgba(15, 23, 42, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+
+    .login-card {
+      background: white;
+      padding: 32px;
+      border-radius: 16px;
+      width: 90%;
+      max-width: 380px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      text-align: center;
+    }
+
+    .login-card h2 {
+      margin-bottom: 8px;
+      font-size: 22px;
+    }
+
+    .login-card p {
+      color: #64748b;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .login-card button {
+      width: 100%;
+      padding: 12px;
+      background: #0f172a;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .login-error {
+      color: #ef4444;
+      font-size: 13px;
+      margin-top: 10px;
+      display: none;
+    }
+
+    .admin-dashboard {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 850px) {
+      .admin-dashboard {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .admin-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #0f172a;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .control-btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn-action {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-send { background: #2563eb; color: white; }
+    .btn-send:hover { background: #1d4ed8; }
+
+    .btn-toggle-on { background: #16a34a; color: white; }
+    .btn-toggle-on:hover { background: #15803d; }
+
+    .btn-toggle-off { background: #ea580c; color: white; }
+    .btn-toggle-off:hover { background: #c2410c; }
+
+    .btn-finish { background: #dc2626; color: white; }
+    .btn-finish:hover { background: #b91c1c; }
+
+    .btn-reset { background: #64748b; color: white; }
+    .btn-reset:hover { background: #475569; }
+
+    /* ステータスバッジ */
+    .status-banner {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-active { background: #dcfce7; color: #15803d; }
+    .status-hidden { background: #fee2e2; color: #b91c1c; }
+
+    /* 回答集計リスト */
+    .results-list {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .result-item {
+      background: #f8fafc;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .result-bar-bg {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .result-bar-fill {
+      height: 100%;
+      background: #3b82f6;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    /* 過去のアンケート履歴用スタイル */
+    .history-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    }
+
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed #e2e8f0;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .history-date {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .btn-csv {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+
+    .btn-csv:hover {
+      background: #059669;
+    }
+
+    /* コメントログ */
+    .comment-log-container {
+      height: 320px;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .user-results-header {
+      font-size: 14px;
+      color: #16a34a;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #reopen-survey-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(8px);
+      color: #2563eb;
+      border: 1px solid #bfdbfe;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: none;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    #reopen-survey-btn:hover {
+      background: #ffffff;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    }
+
+    .modal-close-btn {
+      margin-top: 16px;
+      width: 100%;
+      padding: 10px;
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .modal-close-btn:hover {
+      background: #e2e8f0;
+    }
+
+    .log-item {
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      border-left: 3px solid #3b82f6;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .log-time {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 2px;
+    }
+
+    /* トースト通知 */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #0f172a;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s;
+      z-index: 9999;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- トップナビゲーション（ロール切り替え） -->
+  <nav id="role-selector">
+    <div class="role-brand">
+      <i class="fa-solid fa-comments"></i> 
+      <span>リアルタイムアンケート</span>
+      <span id="display-event-title" class="event-title-badge">
+        <i class="fa-solid fa-calendar-day"></i> 未設定のイベント
+      </span>
+    </div>
+    <div class="role-buttons">
+      <button class="role-btn active" onclick="switchRole('user')">
+        <i class="fa-solid fa-user"></i> 使用者画面
+      </button>
+      <button class="role-btn" onclick="switchRole('admin')">
+        <i class="fa-solid fa-user-gear"></i> 管理者画面
+      </button>
+    </div>
+  </nav>
+
+  <div class="view-container">
+
+    <!-- ==========================================
+         1. 使用者画面 (User View)
+         ========================================== -->
+    <section id="user-view">
+      <!-- 流れるコメントエリア -->
+      <div id="comment-screen"></div>
+
+      <!-- 回答済み/非表示時の再表示ボタン -->
+      <button id="reopen-survey-btn" onclick="toggleUserSurveyModal(true)">
+        <i class="fa-solid fa-chart-simple"></i> アンケート・集計を見る
+      </button>
+
+      <!-- アンケートポップアップモーダル -->
+      <div id="survey-modal">
+        <div class="survey-header">
+          <span class="survey-badge">LIVE アンケート</span>
+          <div class="survey-title" id="display-survey-title">アンケートタイトル</div>
+        </div>
+
+        <form id="user-survey-form" onsubmit="handleSurveySubmit(event)">
+          <div id="display-survey-body" class="survey-options-group"></div>
+        </form>
+      </div>
+
+      <!-- 下部コメント入力バー -->
+      <div id="user-footer">
+        <div class="comment-input-container">
+          <input type="text" id="user-comment-input" placeholder="質問やコメントを入力して送信（画面右から左へ流れます）" onkeydown="handleCommentKeyDown(event)">
+          <button class="send-btn" onclick="sendUserComment()">
+            <i class="fa-solid fa-paper-plane"></i> 送信
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         2. 管理者画面 (Admin View)
+         ========================================== -->
+    <section id="admin-view">
+      <!-- ログインモーダル -->
+      <div id="admin-login-overlay">
+        <div class="login-card">
+          <h2>管理者認証</h2>
+          <p>パスワードを入力して操作パネルを開きます</p>
+          <input type="password" id="admin-password-input" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter') checkAdminPassword()">
+          <button onclick="checkAdminPassword()">ログイン</button>
+          <div id="login-error-msg" class="login-error">パスワードが間違っています</div>
+        </div>
+      </div>
+
+      <!-- ダッシュボードパネル -->
+      <div class="admin-dashboard">
+        
+        <div class="admin-card" style="grid-column: 1 / -1;">
+          <div class="card-title">
+            <i class="fa-solid fa-heading" style="color: #0284c7;"></i> イベントタイトル設定
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="text" id="input-event-title" placeholder="例：2026年度 新製品発表セミナー" style="flex: 1; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px;">
+            <button class="btn-action btn-send" style="flex: initial; padding: 10px 20px;" onclick="updateEventTitle()">
+              <i class="fa-solid fa-pen-to-square"></i> タイトル更新
+            </button>
+          </div>
+        </div>
+
+        <!-- アンケート作成・制御カード -->
+        <div class="admin-card">
+          <div class="card-title">
+            <i class="fa-solid fa-paper-plane" style="color: #2563eb;"></i> アンケート配信＆制御
+          </div>
+
+          <!-- 現在の配信ステータス -->
+          <div id="admin-status-banner" class="status-banner status-hidden">
+            <span>ステータス: 非表示中</span>
+            <span id="status-tag">OFF</span>
+          </div>
+
+          <div class="form-group">
+            <label>アンケートタイトル / 質問文</label>
+            <input type="text" id="input-survey-title" placeholder="例：本日のセッションの満足度を教えてください">
+          </div>
+
+          <div class="form-group">
+            <label>回答形式</label>
+            <select id="input-survey-type" onchange="toggleOptionsInput()">
+              <option value="single">選択式（単一回答）</option>
+              <option value="multiple">選択式（複数回答）</option>
+              <option value="text">記述式</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="options-input-group">
+            <label>選択肢（カンマ「,」区切りで入力）</label>
+            <input type="text" id="input-survey-options" placeholder="例：大変満足, 普通, 不満">
+          </div>
+
+          <div class="control-btn-group">
+            <button class="btn-action btn-send" onclick="publishAndShowSurvey()">
+              <i class="fa-solid fa-share-from-square"></i> 送信して表示
+            </button>
+          </div>
+
+          <div class="control-btn-group">
+            <button class="btn-action btn-toggle-on" onclick="setSurveyVisibility(true)">
+              <i class="fa-solid fa-eye"></i> 表示ON
+            </button>
+            <button class="btn-action btn-toggle-off" onclick="setSurveyVisibility(false)">
+              <i class="fa-solid fa-eye-slash"></i> 非表示OFF
+            </button>
+            <button class="btn-action btn-finish" onclick="finishSurvey()">
+              <i class="fa-solid fa-circle-stop"></i> アンケート終了
+            </button>
+          </div>
+
+          <div class="control-btn-group">
+            <button id="btn-reset-survey" class="btn-action btn-reset" onclick="resetSurvey()">
+              <i class="fa-solid fa-rotate-left"></i> データ＆集計リセット
+            </button>
+          </div>
+        </div>
+
+        <!-- 集計結果・リアルタイムログカード -->
+        <div class="admin-card">
+          <div class="card-title" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <i class="fa-solid fa-chart-pie" style="color: #16a34a;"></i> 現在のアンケート回答集計
+            </div>
+            <button class="btn-csv" onclick="downloadCurrentSurveyCSV()">
+              <i class="fa-solid fa-file-csv"></i> CSV出力
+            </button>
+          </div>
+          <div id="survey-results-container">
+            <p style="color: #94a3b8; font-size: 14px;">現在配信中のアンケート結果がリアルタイム表示されます</p>
+          </div>
+        </div>
+
+        <!-- 過去のアンケート結果・履歴カード (全幅) -->
+        <div class="admin-card" style="grid-column: 1 / -1;">
+          <div class="card-title" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <i class="fa-solid fa-box-archive" style="color: #8b5cf6;"></i> 過去のアンケート結果・履歴一覧
+            </div>
+            <button id="btn-clear-history" class="btn-action btn-reset" style="flex: initial; padding: 6px 14px; font-size: 12px;" onclick="clearSurveyHistory()">
+              <i class="fa-solid fa-trash-can"></i> 履歴を全消去
+            </button>
+          </div>
+          <div id="survey-history-container" style="display: flex; flex-direction: column; gap: 14px;">
+            <!-- 過去の履歴がここに表示されます -->
+          </div>
+        </div>
+
+        <!-- コメント受信ログカード（下部全幅） -->
+        <div class="admin-card" style="grid-column: 1 / -1;">
+          <div class="card-title" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <i class="fa-solid fa-list-ul" style="color: #0f172a;"></i> 受信コメント・質問ログ
+            </div>
+            <button id="btn-clear-comments" class="btn-action btn-reset" style="flex: initial; padding: 6px 14px; font-size: 12px;" onclick="clearCommentLog()">
+              <i class="fa-solid fa-trash-can"></i> ログ消去
+            </button>
+          </div>
+          <div class="comment-log-container" id="admin-comment-log">
+            <!-- ログがここに挿入されます -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast">通知メッセージ</div>
+
+  <script>
+    /* ===================================================
+       1. グローバル設定＆通信チャンネル (BroadcastChannel)
+       =================================================== */
+    const ADMIN_PASSWORD = "admin1234";
+    let isAdminLoggedIn = false;
+
+    // タブ間リアルタイム通信チャンネル
+    const channel = new BroadcastChannel('realtime_app_channel');
+
+    let currentEventTitle = "未設定のイベント";
+
+    // 現在のアンケート状態データ構造
+    let currentSurveyState = {
+      active: false,      // 表示・非表示フラグ
+      title: "",
+      type: "single",
+      options: [],
+      answers: {},        // 集計結果データ
+      timestamp: ""
+    };
+
+    // 過去のアンケート履歴データ構造
+    let surveyHistory = [];
+
+    let lastAnsweredSurveyTitle = "";
+    let userModalManuallyClosed = false;
+
+    // HTMLエスケープヘルパー関数
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    /* ===================================================
+       2. 初期化 & リアルタイム受信リスナー
+       =================================================== */
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedEventTitle = localStorage.getItem('event_title');
+      if (savedEventTitle) {
+        currentEventTitle = savedEventTitle;
+      }
+      updateEventTitleUI();
+
+      const savedState = localStorage.getItem('survey_state');
+      if (savedState) {
+        currentSurveyState = JSON.parse(savedState);
+      }
+
+      const savedHistory = localStorage.getItem('survey_history');
+      if (savedHistory) {
+        surveyHistory = JSON.parse(savedHistory);
+      }
+
+      updateUserSurveyUI();
+      updateAdminResultsUI();
+      updateAdminStatusBanner();
+      renderSurveyHistory();
+
+      channel.onmessage = (event) => {
+        const { type, payload } = event.data;
+
+        if (type === 'SYNC_SURVEY_STATE') {
+          currentSurveyState = payload;
+          updateUserSurveyUI();
+          updateAdminResultsUI();
+          updateAdminStatusBanner();
+        } 
+        else if (type === 'SYNC_EVENT_TITLE') {
+          currentEventTitle = payload;
+          updateEventTitleUI();
+        }
+        else if (type === 'NEW_COMMENT') {
+          renderFloatingComment(payload.text);
+          addAdminCommentLog(payload.text, payload.timestamp);
+        }
+        else if (type === 'CLEAR_COMMENTS') {
+          clearScreenAndLog();
+        }
+        else if (type === 'SUBMIT_ANSWER') {
+          processAnswerData(payload);
+        }
+      };
+    });
+
+    function updateEventTitleUI() {
+      const displayEl = document.getElementById('display-event-title');
+      const inputEl = document.getElementById('input-event-title');
+      if (displayEl) {
+        displayEl.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(currentEventTitle)}`;
+      }
+      if (inputEl && document.activeElement !== inputEl) {
+        inputEl.value = currentEventTitle;
+      }
+    }
+
+    function updateEventTitle() {
+      const inputEl = document.getElementById('input-event-title');
+      const newTitle = inputEl ? inputEl.value.trim() : '';
+      if (!newTitle) {
+        showToast("イベントタイトルを入力してください");
+        return;
+      }
+
+      currentEventTitle = newTitle;
+      localStorage.setItem('event_title', currentEventTitle);
+      updateEventTitleUI();
+
+      channel.postMessage({
+        type: 'SYNC_EVENT_TITLE',
+        payload: currentEventTitle
+      });
+
+      showToast("イベントタイトルを更新しました");
+    }
+
+    function broadcastSurveyState() {
+      localStorage.setItem('survey_state', JSON.stringify(currentSurveyState));
+      channel.postMessage({
+        type: 'SYNC_SURVEY_STATE',
+        payload: currentSurveyState
+      });
+      updateUserSurveyUI();
+      updateAdminResultsUI();
+      updateAdminStatusBanner();
+    }
+
+    /* ===================================================
+       3. 使用者画面 (User View) UI＆アンケート回答処理
+       =================================================== */
+    function switchRole(role) {
+      const btns = document.querySelectorAll('.role-btn');
+      const userBtn = btns[0];
+      const adminBtn = btns[1];
+      const userView = document.getElementById('user-view');
+      const adminView = document.getElementById('admin-view');
+
+      if (role === 'user') {
+        userBtn.classList.add('active');
+        adminBtn.classList.remove('active');
+        userView.style.display = 'block';
+        adminView.style.display = 'none';
+      } else {
+        adminBtn.classList.add('active');
+        userBtn.classList.remove('active');
+        userView.style.display = 'none';
+        adminView.style.display = 'block';
+
+        if (!isAdminLoggedIn) {
+          document.getElementById('admin-login-overlay').style.display = 'flex';
+        }
+      }
+    }
+
+    function updateUserSurveyUI() {
+      const modal = document.getElementById('survey-modal');
+      const titleEl = document.getElementById('display-survey-title');
+      const bodyEl = document.getElementById('display-survey-body');
+      const reopenBtn = document.getElementById('reopen-survey-btn');
+
+      if (!modal || !titleEl || !bodyEl || !reopenBtn) return;
+
+      if (!currentSurveyState.title || !currentSurveyState.active) {
+        modal.classList.remove('active');
+        reopenBtn.style.display = 'none';
+        return;
+      }
+
+      titleEl.textContent = currentSurveyState.title;
+
+      const hasAnswered = (lastAnsweredSurveyTitle === currentSurveyState.title);
+
+      if (!hasAnswered) {
+        if (!userModalManuallyClosed) {
+          modal.classList.add('active');
+          reopenBtn.style.display = 'none';
+        } else {
+          modal.classList.remove('active');
+          reopenBtn.style.display = 'inline-flex';
+        }
+
+        let html = '';
+        if (currentSurveyState.type === 'single') {
+          currentSurveyState.options.forEach((opt, idx) => {
+            html += `
+              <label class="option-label">
+                <input type="radio" name="survey_opt" value="${escapeHtml(opt)}" ${idx === 0 ? 'checked' : ''}>
+                <span>${escapeHtml(opt)}</span>
+              </label>
+            `;
+          });
+        } else if (currentSurveyState.type === 'multiple') {
+          currentSurveyState.options.forEach((opt) => {
+            html += `
+              <label class="option-label">
+                <input type="checkbox" name="survey_opt" value="${escapeHtml(opt)}">
+                <span>${escapeHtml(opt)}</span>
+              </label>
+            `;
+          });
+        } else if (currentSurveyState.type === 'text') {
+          html += `
+            <textarea id="user-text-answer" class="text-answer-input" placeholder="回答を入力してください..."></textarea>
+          `;
+        }
+
+        html += `
+          <div style="margin-top: 16px;">
+            <button type="submit" class="submit-btn">
+              <i class="fa-solid fa-paper-plane"></i> 回答を送信する
+            </button>
+          </div>
+        `;
+
+        bodyEl.innerHTML = html;
+      } else {
+        if (!userModalManuallyClosed) {
+          modal.classList.add('active');
+        }
+        reopenBtn.style.display = 'inline-flex';
+
+        let html = `
+          <div class="user-results-header">
+            <i class="fa-solid fa-circle-check"></i> ご回答ありがとうございました！(リアルタイム集計中)
+          </div>
+        `;
+
+        if (currentSurveyState.type === 'text') {
+          const textList = currentSurveyState.answers["_text_list_"] || [];
+          html += `<div style="max-height: 180px; overflow-y: auto; display:flex; flex-direction:column; gap:6px;">`;
+          if (textList.length === 0) {
+            html += `<p style="font-size:13px; color:#94a3b8;">回答はありません</p>`;
+          } else {
+            textList.forEach(txt => {
+              html += `<div style="background:#f1f5f9; padding:8px 12px; border-radius:8px; font-size:13px; border:1px solid #e2e8f0;">${escapeHtml(txt)}</div>`;
+            });
+          }
+          html += `</div>`;
+        } else {
+          let total = 0;
+          Object.values(currentSurveyState.answers || {}).forEach(count => total += count);
+
+          html += `<div class="results-list">`;
+          Object.entries(currentSurveyState.answers || {}).forEach(([opt, count]) => {
+            const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+            html += `
+              <div class="result-item">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600;">
+                  <span>${escapeHtml(opt)}</span>
+                  <span>${count}票 (${percent}%)</span>
+                </div>
+                <div class="result-bar-bg">
+                  <div class="result-bar-fill" style="width: ${percent}%;"></div>
+                </div>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        html += `
+          <button type="button" class="modal-close-btn" onclick="toggleUserSurveyModal(false)">
+            <i class="fa-solid fa-xmark"></i> 閉じる
+          </button>
+        `;
+
+        bodyEl.innerHTML = html;
+      }
+    }
+
+    function toggleUserSurveyModal(show) {
+      const modal = document.getElementById('survey-modal');
+      const reopenBtn = document.getElementById('reopen-survey-btn');
+
+      if (show) {
+        userModalManuallyClosed = false;
+        modal.classList.add('active');
+        reopenBtn.style.display = 'none';
+      } else {
+        userModalManuallyClosed = true;
+        modal.classList.remove('active');
+        if (currentSurveyState.active && currentSurveyState.title) {
+          reopenBtn.style.display = 'inline-flex';
+        }
+      }
+    }
+
+    function handleSurveySubmit(e) {
+      e.preventDefault();
+      if (!currentSurveyState.active) return;
+
+      let answerPayload = [];
+
+      if (currentSurveyState.type === 'single') {
+        const selected = document.querySelector('input[name="survey_opt"]:checked');
+        if (!selected) {
+          showToast("選択肢を選んでください");
+          return;
+        }
+        answerPayload.push(selected.value);
+      } else if (currentSurveyState.type === 'multiple') {
+        const checkedList = document.querySelectorAll('input[name="survey_opt"]:checked');
+        if (checkedList.length === 0) {
+          showToast("少なくとも1つの選択肢を選んでください");
+          return;
+        }
+        checkedList.forEach(cb => answerPayload.push(cb.value));
+      } else if (currentSurveyState.type === 'text') {
+        const textInput = document.getElementById('user-text-answer');
+        const val = textInput ? textInput.value.trim() : '';
+        if (!val) {
+          showToast("回答を入力してください");
+          return;
+        }
+        answerPayload.push(val);
+      }
+
+      lastAnsweredSurveyTitle = currentSurveyState.title;
+      userModalManuallyClosed = false;
+
+      const payload = {
+        type: currentSurveyState.type,
+        answers: answerPayload
+      };
+
+      processAnswerData(payload);
+      channel.postMessage({ type: 'SUBMIT_ANSWER', payload: payload });
+
+      showToast("ご回答ありがとうございました！集計結果を表示します");
+      updateUserSurveyUI();
+    }
+
+    function sendUserComment() {
+      const input = document.getElementById('user-comment-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const payload = {
+        text: text,
+        timestamp: new Date().toLocaleTimeString()
+      };
+
+      renderFloatingComment(text);
+      addAdminCommentLog(text, payload.timestamp);
+
+      channel.postMessage({ type: 'NEW_COMMENT', payload: payload });
+
+      input.value = '';
+    }
+
+    function handleCommentKeyDown(e) {
+      if (e.key === 'Enter') sendUserComment();
+    }
+
+    function renderFloatingComment(text) {
+      const screen = document.getElementById('comment-screen');
+      if (!screen) return;
+
+      const span = document.createElement('span');
+      span.className = 'marquee-comment';
+      span.textContent = text;
+
+      const randomY = Math.floor(Math.random() * 60) + 10;
+      span.style.top = randomY + 'vh';
+
+      screen.appendChild(span);
+
+      span.addEventListener('animationend', () => {
+        span.remove();
+      });
+    }
+
+    /* ===================================================
+       4. 履歴の自動アーカイブ保存・CSV出力機能
+       =================================================== */
+    function archiveCurrentSurvey() {
+      if (!currentSurveyState.title) return;
+
+      let hasAnswers = false;
+      if (currentSurveyState.type === 'text') {
+        hasAnswers = (currentSurveyState.answers["_text_list_"] && currentSurveyState.answers["_text_list_"].length > 0);
+      } else {
+        hasAnswers = Object.values(currentSurveyState.answers || {}).some(v => v > 0);
+      }
+
+      const existingIdx = surveyHistory.findIndex(h => h.title === currentSurveyState.title && h.timestamp === currentSurveyState.timestamp);
+      const historyData = JSON.parse(JSON.stringify(currentSurveyState));
+
+      if (existingIdx >= 0) {
+        surveyHistory[existingIdx] = historyData;
+      } else if (hasAnswers || currentSurveyState.title) {
+        surveyHistory.unshift(historyData);
+      }
+
+      localStorage.setItem('survey_history', JSON.stringify(surveyHistory));
+      renderSurveyHistory();
+    }
+
+    function renderSurveyHistory() {
+      const container = document.getElementById('survey-history-container');
+      if (!container) return;
+
+      if (surveyHistory.length === 0) {
+        container.innerHTML = `<p style="color: #94a3b8; font-size: 14px;">終了したアンケートや過去の回答結果がここにアーカイブ保存されます</p>`;
+        return;
+      }
+
+      let html = '';
+      surveyHistory.forEach((item, index) => {
+        html += `
+          <div class="history-card">
+            <div class="history-header">
+              <div>
+                <span style="font-weight:700; font-size:15px; color:#0f172a;">Q. ${escapeHtml(item.title)}</span>
+                <div class="history-date"><i class="fa-regular fa-clock"></i> 配信日時: ${item.timestamp || '不明'} (${item.type === 'text' ? '記述式' : '選択式'})</div>
+              </div>
+              <button class="btn-csv" onclick="downloadSurveyCSV(${index})">
+                <i class="fa-solid fa-file-csv"></i> CSV保存
+              </button>
+            </div>
+        `;
+
+        if (item.type === 'text') {
+          const textList = item.answers["_text_list_"] || [];
+          html += `<div style="max-height: 140px; overflow-y: auto; display:flex; flex-direction:column; gap:6px;">`;
+          if (textList.length === 0) {
+            html += `<p style="font-size:12px; color:#94a3b8;">回答はありませんでした</p>`;
+          } else {
+            textList.forEach(txt => {
+              html += `<div style="background:#f8fafc; border:1px solid #e2e8f0; padding:6px 10px; border-radius:6px; font-size:12px;">${escapeHtml(txt)}</div>`;
+            });
+          }
+          html += `</div>`;
+        } else {
+          let total = 0;
+          Object.values(item.answers || {}).forEach(count => total += count);
+
+          html += `<div class="results-list">`;
+          Object.entries(item.answers || {}).forEach(([opt, count]) => {
+            const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+            html += `
+              <div class="result-item" style="padding: 6px 10px;">
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600;">
+                  <span>${escapeHtml(opt)}</span>
+                  <span>${count}票 (${percent}%)</span>
+                </div>
+                <div class="result-bar-bg" style="height: 6px;">
+                  <div class="result-bar-fill" style="width: ${percent}%;"></div>
+                </div>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        html += `</div>`;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function downloadSurveyCSV(historyIndex) {
+      const item = surveyHistory[historyIndex];
+      if (!item) return;
+      generateAndDownloadCSV(item);
+    }
+
+    function downloadCurrentSurveyCSV() {
+      if (!currentSurveyState.title) {
+        showToast("出力するアンケートデータがありません");
+        return;
+      }
+      generateAndDownloadCSV(currentSurveyState);
+    }
+
+    function generateAndDownloadCSV(surveyItem) {
+      let csvRows = [];
+      csvRows.push([`"アンケートタイトル"`, `"${surveyItem.title.replace(/"/g, '""')}"`]);
+      csvRows.push([`"配信日時"`, `"${surveyItem.timestamp || ''}"`]);
+      csvRows.push([`"回答形式"`, `"${surveyItem.type}"`]);
+      csvRows.push([]);
+
+      if (surveyItem.type === 'text') {
+        csvRows.push([`"No."`, `"記述回答"`]);
+        const textList = surveyItem.answers["_text_list_"] || [];
+        textList.forEach((txt, idx) => {
+          csvRows.push([idx + 1, `"${txt.replace(/"/g, '""')}"`]);
+        });
+      } else {
+        csvRows.push([`"選択肢"`, `"票数"`, `"割合(%)"`]);
+        let total = 0;
+        Object.values(surveyItem.answers || {}).forEach(c => total += c);
+
+        Object.entries(surveyItem.answers || {}).forEach(([opt, count]) => {
+          const percent = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+          csvRows.push([`"${opt.replace(/"/g, '""')}"`, count, `${percent}%`]);
+        });
+        csvRows.push([`"合計"`, total, `"100%"`]);
+      }
+
+      const csvContent = csvRows.map(e => e.join(",")).join("\n");
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `アンケート結果_${surveyItem.title}_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast("CSVファイルをダウンロードしました");
+    }
+
+    let isClearHistoryConfirming = false;
+    function clearSurveyHistory() {
+      const btn = document.getElementById('btn-clear-history');
+
+      if (!isClearHistoryConfirming) {
+        isClearHistoryConfirming = true;
+        btn.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 履歴を消去しますか？';
+        btn.style.background = '#dc2626';
+
+        setTimeout(() => {
+          isClearHistoryConfirming = false;
+          if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> 履歴を全消去';
+            btn.style.background = '#64748b';
+          }
+        }, 4000);
+        return;
+      }
+
+      isClearHistoryConfirming = false;
+      btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> 履歴を全消去';
+      btn.style.background = '#64748b';
+
+      surveyHistory = [];
+      localStorage.removeItem('survey_history');
+      renderSurveyHistory();
+      showToast("アンケート履歴を全消去しました");
+    }
+
+    /* ===================================================
+       5. 管理者側機能 (Admin View Logic)
+       =================================================== */
+    function checkAdminPassword() {
+      const input = document.getElementById('admin-password-input');
+      const errorMsg = document.getElementById('login-error-msg');
+
+      if (input.value === ADMIN_PASSWORD) {
+        isAdminLoggedIn = true;
+        document.getElementById('admin-login-overlay').style.display = 'none';
+        errorMsg.style.display = 'none';
+        showToast("管理者ログインに成功しました");
+      } else {
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    function toggleOptionsInput() {
+      const type = document.getElementById('input-survey-type').value;
+      const group = document.getElementById('options-input-group');
+      group.style.display = type === 'text' ? 'none' : 'block';
+    }
+
+    function publishAndShowSurvey() {
+      const title = document.getElementById('input-survey-title').value.trim();
+      const type = document.getElementById('input-survey-type').value;
+      const optionsRaw = document.getElementById('input-survey-options').value;
+
+      if (!title) {
+        showToast("質問文を入力してください");
+        return;
+      }
+
+      archiveCurrentSurvey();
+
+      const options = type !== 'text' 
+        ? optionsRaw.split(',').map(s => s.trim()).filter(s => s.length > 0)
+        : [];
+
+      if (type !== 'text' && options.length === 0) {
+        showToast("選択肢をカンマ区切りで入力してください");
+        return;
+      }
+
+      currentSurveyState = {
+        active: true,
+        title: title,
+        type: type,
+        options: options,
+        answers: {},
+        timestamp: new Date().toLocaleString()
+      };
+
+      if (type !== 'text') {
+        options.forEach(opt => currentSurveyState.answers[opt] = 0);
+      } else {
+        currentSurveyState.answers["_text_list_"] = [];
+      }
+
+      broadcastSurveyState();
+      archiveCurrentSurvey();
+      showToast("アンケートを送信し、表示を開始しました");
+    }
+
+    function setSurveyVisibility(visible) {
+      if (!currentSurveyState.title) {
+        showToast("配信中のアンケートがありません。先に送信してください");
+        return;
+      }
+
+      currentSurveyState.active = visible;
+      broadcastSurveyState();
+      showToast(visible ? "アンケートを表示しました" : "アンケートを非表示にしました");
+    }
+
+    function finishSurvey() {
+      if (!currentSurveyState.title) {
+        showToast("終了するアンケートがありません");
+        return;
+      }
+
+      currentSurveyState.active = false;
+      broadcastSurveyState();
+      archiveCurrentSurvey();
+      showToast("アンケートを終了し、結果を履歴に保存しました");
+    }
+
+    let isResetConfirming = false;
+    function resetSurvey() {
+      const btn = document.getElementById('btn-reset-survey');
+      
+      if (!isResetConfirming) {
+        isResetConfirming = true;
+        btn.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 本当にリセット？ (もう一度押す)';
+        btn.style.background = '#dc2626';
+        
+        setTimeout(() => {
+          isResetConfirming = false;
+          if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> データ＆集計リセット';
+            btn.style.background = '#64748b';
+          }
+        }, 4000);
+        return;
+      }
+
+      archiveCurrentSurvey();
+
+      isResetConfirming = false;
+      btn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> データ＆集計リセット';
+      btn.style.background = '#64748b';
+
+      currentSurveyState = {
+        active: false,
+        title: "",
+        type: "single",
+        options: [],
+        answers: {},
+        timestamp: ""
+      };
+      lastAnsweredSurveyTitle = "";
+      localStorage.removeItem('survey_state');
+      
+      document.getElementById('input-survey-title').value = '';
+      document.getElementById('input-survey-options').value = '';
+
+      broadcastSurveyState();
+      showToast("現在のアンケートデータをリセットしました（過去履歴には保持されます）");
+    }
+
+    let isClearCommentsConfirming = false;
+    function clearCommentLog() {
+      const btn = document.getElementById('btn-clear-comments');
+
+      if (!isClearCommentsConfirming) {
+        isClearCommentsConfirming = true;
+        btn.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 消去しますか？';
+        btn.style.background = '#dc2626';
+
+        setTimeout(() => {
+          isClearCommentsConfirming = false;
+          if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> ログ消去';
+            btn.style.background = '#64748b';
+          }
+        }, 4000);
+        return;
+      }
+
+      isClearCommentsConfirming = false;
+      btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> ログ消去';
+      btn.style.background = '#64748b';
+
+      clearScreenAndLog();
+      channel.postMessage({ type: 'CLEAR_COMMENTS' });
+      showToast("コメントログと画面上のコメントを消去しました");
+    }
+
+    function clearScreenAndLog() {
+      const logContainer = document.getElementById('admin-comment-log');
+      if (logContainer) logContainer.innerHTML = '';
+
+      const screen = document.getElementById('comment-screen');
+      if (screen) screen.innerHTML = '';
+    }
+
+    function updateAdminStatusBanner() {
+      const banner = document.getElementById('admin-status-banner');
+      const tag = document.getElementById('status-tag');
+
+      if (!banner || !tag) return;
+
+      if (currentSurveyState.active) {
+        banner.className = 'status-banner status-active';
+        banner.querySelector('span').textContent = `ステータス: 配信表示中 (${currentSurveyState.title})`;
+        tag.textContent = "ON";
+      } else {
+        banner.className = 'status-banner status-hidden';
+        banner.querySelector('span').textContent = 'ステータス: 非表示中';
+        tag.textContent = "OFF";
+      }
+    }
+
+    function processAnswerData(payload) {
+      if (!currentSurveyState.answers) return;
+
+      if (payload.type === 'text') {
+        if (!currentSurveyState.answers["_text_list_"]) {
+          currentSurveyState.answers["_text_list_"] = [];
+        }
+        currentSurveyState.answers["_text_list_"].push(...payload.answers);
+      } else {
+        payload.answers.forEach(opt => {
+          currentSurveyState.answers[opt] = (currentSurveyState.answers[opt] || 0) + 1;
+        });
+      }
+
+      localStorage.setItem('survey_state', JSON.stringify(currentSurveyState));
+      archiveCurrentSurvey();
+      updateAdminResultsUI();
+      updateUserSurveyUI();
+    }
+
+    function updateAdminResultsUI() {
+      const container = document.getElementById('survey-results-container');
+      if (!container) return;
+
+      if (!currentSurveyState.title) {
+        container.innerHTML = `<p style="color: #94a3b8; font-size: 14px;">現在配信中のアンケート結果がリアルタイム表示されます</p>`;
+        return;
+      }
+
+      let html = `<h4 style="margin-bottom: 12px;">Q. ${escapeHtml(currentSurveyState.title)}</h4>`;
+
+      if (currentSurveyState.type === 'text') {
+        const textList = currentSurveyState.answers["_text_list_"] || [];
+        html += `<div style="max-height: 200px; overflow-y: auto; display:flex; flex-direction:column; gap:6px;">`;
+        if (textList.length === 0) {
+          html += `<p style="font-size:13px; color:#94a3b8;">まだ回答はありません</p>`;
+        } else {
+          textList.forEach(txt => {
+            html += `<div style="background:#f1f5f9; padding:8px; border-radius:6px; font-size:13px;">${escapeHtml(txt)}</div>`;
+          });
+        }
+        html += `</div>`;
+      } else {
+        let total = 0;
+        Object.values(currentSurveyState.answers || {}).forEach(count => total += count);
+
+        html += `<div class="results-list">`;
+        Object.entries(currentSurveyState.answers || {}).forEach(([opt, count]) => {
+          const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+          html += `
+            <div class="result-item">
+              <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600;">
+                <span>${escapeHtml(opt)}</span>
+                <span>${count}票 (${percent}%)</span>
+              </div>
+              <div class="result-bar-bg">
+                <div class="result-bar-fill" style="width: ${percent}%;"></div>
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    function addAdminCommentLog(text, time) {
+      const logContainer = document.getElementById('admin-comment-log');
+      if (!logContainer) return;
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `
+        <div class="log-time">${time}</div>
+        <div>${escapeHtml(text)}</div>
+      `;
+      logContainer.prepend(item);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
